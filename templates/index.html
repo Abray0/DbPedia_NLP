@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DBPedia Movie Search</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+    <script src="https://d3js.org/d3.v6.min.js"></script>
+    <style>
+        /* General Styles */
+        body {
+            font-family: 'Roboto', sans-serif;
+            margin: 0;
+            padding: 0;
+            color: #ffffff;
+            background-color: #121212;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Header */
+        header {
+            background-color: #1e1e1e;
+            color: #ffffff;
+            padding: 10px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+        }
+
+        header h1 {
+            font-size: 1.8rem;
+            margin: 0;
+        }
+
+        header nav a {
+            color: #ffffff;
+            text-decoration: none;
+            margin-left: 20px;
+            font-weight: 500;
+        }
+
+        header nav a:hover {
+            color: #007bff;
+        }
+
+        /* Main Content */
+        main {
+            margin-top: 20px;
+            padding: 20px;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        h1 {
+            font-size: 2rem;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        /* Search Bar */
+        .search-container {
+            display: flex;
+            width: 100%;
+            max-width: 600px;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .search-input {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #333333;
+            border-radius: 4px;
+            background-color: #1e1e1e;
+            color: #ffffff;
+            font-size: 1rem;
+        }
+
+        .search-input:focus {
+            outline: none;
+            border-color: #007bff;
+        }
+
+        .search-button {
+            padding: 10px 20px;
+            background-color: #007bff;
+            color: #ffffff;
+            border: none;
+            border-radius: 4px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+
+        .search-button:hover {
+            background-color: #0056b3;
+        }
+
+        /* Results */
+        .results-container {
+            margin-top: 20px;
+            width: 100%;
+            max-width: 800px;
+        }
+
+        .result-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            background-color: #1e1e1e;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+        }
+
+        .result-info {
+            flex: 1;
+        }
+
+        .result-item h3 {
+            margin: 0 0 10px;
+        }
+
+        .result-item h3 a {
+            color: #007bff;
+            text-decoration: none;
+        }
+
+        .result-item h3 a:hover {
+            text-decoration: underline;
+        }
+
+        .visualize-button {
+            padding: 8px 16px;
+            background-color: #28a745;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+            margin-top: 10px;
+        }
+
+        .visualize-button:hover {
+            background-color: #218838;
+        }
+.loader {
+            border: 4px solid #333333;
+            border-top: 4px solid #007bff;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+            display: none;
+        }
+        .graph-container {
+            flex-basis: 50%;
+            max-width: 400px;
+            height: 300px;
+            margin-left: 20px;
+            background-color: #1e1e1e;
+            border-radius: 4px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+        }
+
+        .graph-container svg {
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>DBPedia Movie Search</h1>
+    </header>
+
+    <main>
+        <h1>Find Movies and Explore Relations</h1>
+        <div class="search-container">
+            <input type="text" id="searchInput" class="search-input" placeholder="Enter movie title...">
+            <button onclick="search()" class="search-button">Search</button>
+        </div>
+
+        <div id="loader" class="loader"></div>
+        <div class="results-container" id="results"></div>
+    </main>
+
+    <script>
+        let allResults = [];
+
+        async function search() {
+            const searchTerm = document.getElementById('searchInput').value.trim();
+            const resultsDiv = document.getElementById('results');
+            const loader = document.getElementById('loader');
+
+            if (!searchTerm) {
+                resultsDiv.innerHTML = '<p style="color: red;">Please enter a search term.</p>';
+                return;
+            }
+
+            loader.style.display = 'block';
+            resultsDiv.innerHTML = '';
+
+            try {
+                const response = await fetch('/search', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ query: searchTerm }),
+                });
+
+                const data = await response.json();
+                loader.style.display = 'none';
+
+                if (data.error) {
+                    resultsDiv.innerHTML = `<p style="color: red;">${data.error}</p>`;
+                    return;
+                }
+
+                if (data.results.length === 0) {
+                    resultsDiv.innerHTML = '<p>No results found.</p>';
+                    return;
+                }
+
+                allResults = data.results;
+                displayResults();
+            } catch (error) {
+                loader.style.display = 'none';
+                resultsDiv.innerHTML = `<p style="color: red;">Error: ${error.message}</p>`;
+            }
+        }
+
+        function displayResults() {
+            const resultsDiv = document.getElementById('results');
+
+            resultsDiv.innerHTML = allResults.map((result, index) => `
+                <div class="result-item">
+                    <div class="result-info">
+                        <h3><a href="${result.uri}" target="_blank">${result.label}</a></h3>
+                        <p>${result.description}</p>
+                        <button class="visualize-button" onclick="visualizeRelations('${result.uri}', ${index})">Show Relations</button>
+                    </div>
+                    <div id="graph-${index}" class="graph-container"></div>
+                </div>
+            `).join('');
+        }
+
+        async function visualizeRelations(movieUri, index) {
+            const graphContainer = document.getElementById(`graph-${index}`);
+            graphContainer.innerHTML = 'Loading graph...';
+
+            try {
+                const response = await fetch('/relations', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ movie_uri: movieUri }),
+                });
+
+                const data = await response.json();
+
+                if (data.error) {
+                    graphContainer.innerHTML = `<p style="color: red;">${data.error}</p>`;
+                    return;
+                }
+
+                drawGraph(data.relations, graphContainer);
+            } catch (error) {
+                graphContainer.innerHTML = `<p style="color: red;">Error: ${error.message}</p>`;
+            }
+        }
+
+        function drawGraph(relations, container) {
+            container.innerHTML = '';
+
+            const nodes = [{ id: 'Movie', group: 1 }];
+            const links = [];
+
+            relations.forEach(relation => {
+                nodes.push({ id: relation.label, group: 2 });
+                links.push({ source: 'Movie', target: relation.label });
+            });
+
+            const width = container.offsetWidth;
+            const height = container.offsetHeight;
+
+            const svg = d3.select(container)
+                .append('svg')
+                .attr('width', width)
+                .attr('height', height);
+
+            const simulation = d3.forceSimulation(nodes)
+                .force('link', d3.forceLink(links).id(d => d.id))
+                .force('charge', d3.forceManyBody())
+                .force('center', d3.forceCenter(width / 2, height / 2));
+
+            const link = svg.append('g')
+                .selectAll('line')
+                .data(links)
+                .join('line')
+                .attr('stroke', '#aaa');
+
+            const node = svg.append('g')
+                .selectAll('circle')
+                .data(nodes)
+                .join('circle')
+                .attr('r', 10)
+                .attr('fill', d => d.group === 1 ? '#007bff' : '#28a745');
+
+            const text = svg.append('g')
+                .selectAll('text')
+                .data(nodes)
+                .join('text')
+                .attr('dy', -15)
+                .attr('dx', 5)
+                .text(d => d.id)
+                .attr('font-size', 12)
+                .attr('fill', '#fff');
+
+            simulation.on('tick', () => {
+                link
+                    .attr('x1', d => d.source.x)
+                    .attr('y1', d => d.source.y)
+                    .attr('x2', d => d.target.x)
+                    .attr('y2', d => d.target.y);
+
+                node
+                    .attr('cx', d => d.x)
+                    .attr('cy', d => d.y);
+
+                text
+                    .attr('x', d => d.x)
+                    .attr('y', d => d.y);
+            });
+        }
+    </script>
+</body>
+</html>
